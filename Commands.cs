@@ -21,19 +21,6 @@ https://cs.wikipedia.org/wiki/Domovoj. Zatim nepodporuji zadne prikazy, ale budu
 v budoucnosti.");
         }
 
-
-        [Command("domovojresidence")]
-        public async Task Residence()
-        {
-            if (Bot.IsOperator(Context.Message.Author.Id) && Bot.Instance.ResidentGuild == null)
-            {
-                Bot.Instance.ResidentGuild = Context.Guild;
-                await ReplyAsync("Setting up residence in guild " + Context.Guild.Name + ".");
-                await Bot.Instance.ResidenceInit();
-
-            }
-        }
-
         [Command("joinedat")]
         public async Task JoinedAt(string discordUsername)
         {

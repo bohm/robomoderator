@@ -14,6 +14,7 @@ using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using System.Security.Cryptography.X509Certificates;
 using System.Diagnostics;
+using System.Text;
 
 namespace domovoj
 {
@@ -26,6 +27,7 @@ namespace domovoj
         private DiscordSocketClient client;
         private CommandService commands;
         private IServiceProvider services;
+        private Dictionary<string, ulong> groupNameToID;
         private bool initComplete = false;
 
         private readonly SemaphoreSlim Access;
@@ -33,13 +35,15 @@ namespace domovoj
         private List<ulong> otherGameLobbyIds;
         // private List<Discord.WebSocket.SocketVoiceChannel> otherGameLobbies;
         private List<string> otherGames;
-
+        private RoleHighlighting highlighter;
         public static bool IsOperator(ulong id)
         {
             return (Settings.Operators.Contains(id));
         }
         public Bot()
         {
+            groupNameToID = new Dictionary<string, ulong>();
+            highlighter = new RoleHighlighting();
             Instance = this;
             otherGameLobbyIds = new List<ulong>();
             otherGames = new List<string>();
@@ -180,6 +184,68 @@ namespace domovoj
             await commands.AddModulesAsync(Assembly.GetEntryAssembly(), services);
         }
 
+        private void FetchGroupIDs()
+        {
+            groupNameToID.Clear();
+            foreach (string name in Settings.LoudMetalRoles)
+            {
+                SocketRole role = this.ResidentGuild.Roles.First(x => x.Name == name);
+                if (role != null)
+                {
+                    groupNameToID.Add(name, role.Id);
+                }
+            }
+
+            foreach (string name in Settings.LoudDigitRoles)
+            {
+                SocketRole role = this.ResidentGuild.Roles.First(x => x.Name == name);
+                if (role != null)
+                {
+                    groupNameToID.Add(name, role.Id);
+                }
+            }
+        }
+
+        private async Task RoleHighlightingFilter(SocketMessage rawmsg)
+        {
+            var message = rawmsg as SocketUserMessage;
+            if (message is null || message.Author.IsBot)
+            {
+                return; // Ignore all bot messages and empty messages.
+            }
+            if (message.Channel.Name != Settings.roleHighlightChannel)
+            {
+                return; // Ignore all channels except the allowed channel.
+            }
+
+            List<string> rolesToHighlight = highlighter.RolesToHighlight(rawmsg.Content);
+
+            if (rolesToHighlight.Count == 0)
+            {
+                return;
+            }
+
+            StringBuilder taggedRoles = new StringBuilder();
+            bool first = true;
+            foreach (string role in rolesToHighlight)
+            {
+                if(first)
+                {
+                    first = false;
+                }
+                else
+                {
+                    taggedRoles.Append(" ");
+                }
+                taggedRoles.Append("<@&");
+                taggedRoles.Append(groupNameToID[role]);
+                taggedRoles.Append(">");
+            }
+
+            SocketTextChannel responseChannel = (SocketTextChannel)message.Channel;
+            await responseChannel.SendMessageAsync(taggedRoles.ToString());
+            return;
+        }
         private async Task HandleCommandAsync(SocketMessage arg)
         {
             var message = arg as SocketUserMessage;
@@ -207,6 +273,16 @@ namespace domovoj
                 .AddSingleton(commands)
                 .BuildServiceProvider();
             client.Log += Log;
+            client.Ready += () =>
+            {
+                this.ResidentGuild = client.GetGuild(Settings.residenceID);
+                Console.WriteLine("Setting up residence in Discord guild " + this.ResidentGuild.Name);
+                FetchGroupIDs();
+                return Task.CompletedTask;
+            };
+
+            client.MessageReceived += RoleHighlightingFilter;
+
             await RegisterCommandsAsync();
             await client.LoginAsync(Discord.TokenType.Bot, Secrets.botToken);
             await client.StartAsync();
