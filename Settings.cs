@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace domovoj
+namespace RoboModerator
 {
     class Settings
     {
@@ -17,8 +17,10 @@ namespace domovoj
 
         public static readonly string[] BotChannels = { "rank-bot", "🦾rank-bot", "rank-bot-admin" }; // The only channels the bot is operating in.
         // public static readonly string roleHighlightChannel = "rank-bot-admin"; // TODO: switch this to "hledame-spoluhrace" once we are ready.
-        public static readonly string roleHighlightChannel = "🔍hledám-spoluhráče";
+        public static readonly string[] roleHighlightChannels = { "🔍hledám-spoluhráče", "hledame-testing" };
+        public static readonly string searchChannelNG = "hledame-testing";
         public static readonly TimeSpan RepeatPeriod = TimeSpan.FromSeconds(60);
+        public static readonly TimeSpan RateRestPeriod = TimeSpan.FromSeconds(1);
 
         public static string get_botStatus()
         {
@@ -37,7 +39,14 @@ namespace domovoj
                             "Silver 5", "Silver 4", "Silver 3", "Silver 2", "Silver 1",
                             "Gold 3", "Gold 2", "Gold 1",
                             "Plat 3", "Plat 2", "Plat 1",
+                            "Dia 3", "Dia 2", "Dia 1"
         };
+
+        // Global variables that do not need to be edited.
+        public static List<string> UpperCaseLoudDigitRoles;
+        public static List<string> UpperCaseLoudMetalRoles;
+        public static List<string> LowerCaseLoudDigitRoles; // Needs to be initialized from LoudDigitRoles.
+        public static List<string> LowerCaseLoudMetalRoles; // Needs to be initialized from LoudMetalRoles.
 
     }
 }

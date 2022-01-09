@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.30104.148
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "domovoj", "domovoj.csproj", "{CC1149B8-BB32-4AFB-9273-0B77425B8F79}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RoboModerator", "RoboModerator.csproj", "{CC1149B8-BB32-4AFB-9273-0B77425B8F79}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -15,8 +15,10 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Security.Cryptography.X509Certificates;
 using System.Diagnostics;
 using System.Text;
+using Discord.Net;
+using Newtonsoft.Json;
 
-namespace domovoj
+namespace RoboModerator
 {
     class Bot
     {
@@ -30,12 +32,14 @@ namespace domovoj
         private Dictionary<string, ulong> groupNameToID;
         private bool initComplete = false;
 
+        HashSet<ulong> _highlightedToday;
+        DateTime _highlightSetDate;
+
         private readonly SemaphoreSlim Access;
 
         private List<ulong> otherGameLobbyIds;
         // private List<Discord.WebSocket.SocketVoiceChannel> otherGameLobbies;
         private List<string> otherGames;
-        private RoleHighlighting highlighter;
         public static bool IsOperator(ulong id)
         {
             return (Settings.Operators.Contains(id));
@@ -43,7 +47,6 @@ namespace domovoj
         public Bot()
         {
             groupNameToID = new Dictionary<string, ulong>();
-            highlighter = new RoleHighlighting();
             Instance = this;
             otherGameLobbyIds = new List<ulong>();
             otherGames = new List<string>();
@@ -74,6 +77,7 @@ namespace domovoj
             return otherGameChannels;
         }
 
+        /*
         public string GuessOtherGame(Discord.WebSocket.SocketGuild Guild, Discord.WebSocket.SocketVoiceChannel lobby)
         {
             string activity = null;
@@ -98,7 +102,77 @@ namespace domovoj
 
             return activity;
         }
+        */
 
+        public void CheckDateRollover()
+        {
+            if (this._highlightSetDate != null && this._highlightedToday != null)
+            {
+                if (DateTime.Now.Date > this._highlightSetDate.Date)
+                {
+                    this._highlightedToday.Clear();
+                    this._highlightSetDate = DateTime.Now;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Returns a Discord user object based on the name provided. Returns the first result. 
+        /// </summary>
+        /// <param name="discordNick"></param>
+        /// <returns></returns>
+        public SocketGuildUser UserByName(string discordNick)
+        {
+            return this.ResidentGuild.Users.FirstOrDefault(x => ((x.Username == discordNick) || (x.Nickname == discordNick)));
+        }
+
+        public SocketRole RoleByName(string roleName)
+        {
+            return this.ResidentGuild.Roles.FirstOrDefault(x => x.Name == roleName);
+        }
+
+        public async Task ManualClear(Discord.WebSocket.ISocketMessageChannel invokedChannel)
+        {
+            Discord.WebSocket.SocketTextChannel channelToClear = this.ResidentGuild.TextChannels.FirstOrDefault(x => x.Name == Settings.searchChannelNG);
+            if (channelToClear == null)
+            {
+                await invokedChannel.SendMessageAsync("Channel to be cleared was not found.");
+                return;
+            }
+            var asyncMessageList = channelToClear.GetMessagesAsync(int.MaxValue);
+            int sleepCounter = 0;
+
+            Console.WriteLine("Iterating through the list.");
+            await foreach (var readonlycollection in asyncMessageList)
+            {
+                foreach(var msg in readonlycollection)
+                {
+                    Console.WriteLine("Found another message");
+                    // Manual rate limit. It is unclear from the documentation if this is necessary.
+                    sleepCounter++;
+                    if (sleepCounter >= 100)
+                    {
+                        await Task.Delay(Settings.RateRestPeriod);
+                        sleepCounter = 0;
+                    }
+
+                    if (msg.Content.StartsWith("Perma:") || msg.Content.StartsWith("perma:"))
+                    {
+
+                        // Console.WriteLine($"The message {msg.Content} will be kept.");
+                        continue;
+                    }
+                    else
+                    {
+                        // Console.WriteLine($"The message {msg.Content} will be deleted.");
+                        // ulong msgId = msg.Id;
+                        await channelToClear.DeleteMessageAsync(msg);
+                    }
+                }
+            }
+        }
+
+        /*
         public async Task UpdateNames()
         {
             // Do nothing until the bot is attached to a guild/server.
@@ -153,6 +227,7 @@ namespace domovoj
                 }
             }
         }
+        */
 
         public async Task ResidenceInit()
         {
@@ -206,46 +281,30 @@ namespace domovoj
             }
         }
 
-        private async Task RoleHighlightingFilter(SocketMessage rawmsg)
+        public async Task DelayedUserPing(Discord.WebSocket.ISocketMessageChannel chan, Discord.WebSocket.SocketGuildUser user)
         {
-            var message = rawmsg as SocketUserMessage;
-            if (message is null || message.Author.IsBot)
-            {
-                return; // Ignore all bot messages and empty messages.
-            }
-            if (message.Channel.Name != Settings.roleHighlightChannel)
-            {
-                return; // Ignore all channels except the allowed channel.
-            }
-
-            List<string> rolesToHighlight = highlighter.RolesToHighlight(rawmsg.Content);
-
-            if (rolesToHighlight.Count == 0)
-            {
-                return;
-            }
-
-            StringBuilder taggedRoles = new StringBuilder();
-            bool first = true;
-            foreach (string role in rolesToHighlight)
-            {
-                if(first)
-                {
-                    first = false;
-                }
-                else
-                {
-                    taggedRoles.Append(" ");
-                }
-                taggedRoles.Append("<@&");
-                taggedRoles.Append(groupNameToID[role]);
-                taggedRoles.Append(">");
-            }
-
-            SocketTextChannel responseChannel = (SocketTextChannel)message.Channel;
-            await responseChannel.SendMessageAsync(taggedRoles.ToString());
-            return;
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            ulong id = user.Id;
+            StringBuilder msg = new StringBuilder();
+            msg.Append("Pinging ");
+            msg.Append("<@");
+            msg.Append(id);
+            msg.Append(">");
+            msg.Append(" .");
+            await chan.SendMessageAsync(msg.ToString());
         }
+
+        public async Task DelayedRolePing(Discord.WebSocket.ISocketMessageChannel chan, Discord.WebSocket.SocketRole role)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            StringBuilder msg = new StringBuilder();
+            msg.Append("Pinging ");
+            msg.Append(role.Mention);
+            msg.Append(" .");
+            await chan.SendMessageAsync(msg.ToString());
+        }
+
+
         private async Task HandleCommandAsync(SocketMessage arg)
         {
             var message = arg as SocketUserMessage;
@@ -264,6 +323,95 @@ namespace domovoj
         }
 
 
+        public async Task BuildSlashCommandsAsync(SocketGuild guild)
+        {
+            SlashCommandBuilder guildCommand = new SlashCommandBuilder();
+            guildCommand.WithName("joined-at");
+            guildCommand.WithDescription("Shows when a particular user joined the Discord guild.");
+            guildCommand.AddOption("user", ApplicationCommandOptionType.User, "The user to be queried.");
+
+            try
+            {
+                await client.Rest.CreateGuildCommand(guildCommand.Build(), guild.Id);
+            }
+            catch(HttpException e)
+            {
+                Console.WriteLine($"RoboModerator: Guild command build error {e.HttpCode}:  {e.Message}");
+            }
+           
+        }
+
+        private async Task JoinedAtAsync(SocketSlashCommand command)
+        {
+            if (command.Data.Options.Count > 1)
+            {
+                await command.RespondAsync($"Too many options, this command only takes one.");
+                return;
+            } else if (command.Data.Options.Count == 0)
+            {
+                await command.RespondAsync($"Too few options, this command only takes one.");
+                return;
+            }
+
+            if (command.Data.Options.First().Type != ApplicationCommandOptionType.User)
+            {
+                await command.RespondAsync($"The first parameter has a wrong type!");
+                return;
+
+            }
+
+            var user = command.Data.Options.First().Value as SocketGuildUser;
+
+            if (user == null)
+            {
+                await command.RespondAsync("Joinedat(): Error during type conversion");
+                return;
+            }
+
+            string discordUsername = user.Username;
+
+            if (ResidentGuild != null)
+            {
+                var matchedUsers = ResidentGuild.Users.Where(x => x.Username.Equals(discordUsername));
+
+                if (matchedUsers.Count() == 0)
+                {
+                    await command.RespondAsync($"There is no user matching the Discord nickname {discordUsername}.");
+                    return;
+                }
+
+                if (matchedUsers.Count() > 1)
+                {
+                    await command.RespondAsync($"Two or more users have the same matching Discord nickname." +
+                        $"This command cannot continue.");
+                    return;
+                }
+
+                Discord.WebSocket.SocketGuildUser rightUser = matchedUsers.First();
+
+                await command.RespondAsync($"The user with the nickname {discordUsername} joined at {rightUser.JoinedAt}");
+            }
+        }
+
+        private async Task SlashCommandHandlerAsync(SocketSlashCommand command)
+        {
+            if(command.CommandName == "joined-at")
+            {
+                await JoinedAtAsync(command);
+            }
+        }
+
+        public async Task ClientReadyAsync()
+        {
+            this._highlightSetDate = DateTime.Now;
+            this._highlightedToday = new HashSet<ulong>();
+            this.ResidentGuild = client.GetGuild(Settings.residenceID);
+            Console.WriteLine("Setting up residence in Discord guild " + this.ResidentGuild.Name);
+            FetchGroupIDs();
+            // Do only once:
+            // await BuildSlashCommandsAsync(this.ResidentGuild);
+        }
+
         public async Task RunBotAsync()
         {
             client = new DiscordSocketClient();
@@ -273,15 +421,8 @@ namespace domovoj
                 .AddSingleton(commands)
                 .BuildServiceProvider();
             client.Log += Log;
-            client.Ready += () =>
-            {
-                this.ResidentGuild = client.GetGuild(Settings.residenceID);
-                Console.WriteLine("Setting up residence in Discord guild " + this.ResidentGuild.Name);
-                FetchGroupIDs();
-                return Task.CompletedTask;
-            };
-
-            client.MessageReceived += RoleHighlightingFilter;
+            client.Ready += ClientReadyAsync;
+            client.SlashCommandExecuted += SlashCommandHandlerAsync;
 
             await RegisterCommandsAsync();
             await client.LoginAsync(Discord.TokenType.Bot, Secrets.botToken);
@@ -290,31 +431,28 @@ namespace domovoj
             while (true)
             {
                 // do periodic tasks
-                await UpdateNames();
+                CheckDateRollover();
                 await Task.Delay(Settings.RepeatPeriod);
+
             }
             // await Task.Delay();
         }
 
         static async Task Main(string[] args)
         {
+            Settings.UpperCaseLoudDigitRoles = new List<string>(Settings.LoudDigitRoles);
+            Settings.UpperCaseLoudMetalRoles = new List<string>(Settings.LoudMetalRoles);
+
+
             // Test 1
-
-            // string tester = "Lopata_6";
-            // string testerID = await R6Tab.GetTabID(tester);
-            // Console.WriteLine(tester + "'s ID:" + testerID);
-            // R6TabDataSnippet snippet = await R6Tab.GetData(testerID);
-            // Rank r = snippet.ToRank();
-            // Console.WriteLine(tester + "'s rank:" + r.FullPrint());
-            // Test 2
-
-            // List<string> darthList = new List<string> {"@everyone", "G", "Raptoil", "Stamgast", "Gold 2", "Gold", "G2" };
-            // Rank guessDarth = Ranking.GuessRank(darthList);
-            // if (!guessDarth.Equals(new Rank(Metal.Gold, 2)))
+            // RoleHighlighting rh = new RoleHighlighting();
+            // var testMatches = Regex.Matches("Nekdo hru Plat 2 gold Silver? copper 3, Champion Bronzek Dia", rh.RegexMatcher);
+            // foreach (Match m in testMatches)
             // {
-            //     Console.WriteLine("Sanity check failed. Darth's guess is" + guessDarth.FullPrint());
-            //     throw new Exception();
+            //     string canonicalForm = RoleHighlighting.FirstToUppercase(m.Groups[1].Value);
+            //      Console.WriteLine($"Canonical form of match is: {canonicalForm}");
             // }
+
             await new Bot().RunBotAsync();
         }
     }

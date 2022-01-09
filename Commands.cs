@@ -7,7 +7,7 @@ using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace domovoj
+namespace RoboModerator
 {
 
     public class Commands : ModuleBase<SocketCommandContext>
@@ -45,7 +45,78 @@ v budoucnosti.");
                 await ReplyAsync("The user with the nickname " + discordUsername + " joined at " + rightUser.JoinedAt);
 
             }
+        }
 
+        // -- The commands below are primarily administrative and testing in nature. --
+
+        [Command("manualclear")]
+        public async Task ManualClear()
+        {
+            if (Bot.Instance.ResidentGuild == null)
+            {
+                await ReplyAsync("ResidentGuild is not set, cannot continue for now.");
+                return;
+            }
+
+            if (!Settings.Operators.Contains(Context.Message.Author.Id))
+            {
+                await ReplyAsync("This command requires admin/operator privileges.");
+                return;
+            }
+
+            _ = Bot.Instance.ManualClear(Context.Channel);
+
+        }
+
+        [Command("delayeduserping")]
+        public async Task DelayedUserPing(string discordNick)
+        {
+            if (Bot.Instance.ResidentGuild == null)
+            {
+                await ReplyAsync("ResidentGuild is not set, cannot continue for now.");
+                return;
+            }
+
+            if (!Settings.Operators.Contains(Context.Message.Author.Id))
+            {
+                await ReplyAsync("This command requires admin/operator privileges.");
+                return;
+            }
+
+            var target = Bot.Instance.UserByName(discordNick);
+            if (target == null)
+            {
+                await ReplyAsync(Context.Message.Author.Username + ": Nenasli jsme cloveka ani podle prezdivky, ani podle Discord jmena.");
+                return;
+            }
+
+            _ = Bot.Instance.DelayedUserPing(Context.Message.Channel, target);
+
+        }
+
+        [Command("delayedroleping")]
+        public async Task DelayedRolePing(string roleName)
+        {
+            if (Bot.Instance.ResidentGuild == null)
+            {
+                await ReplyAsync("ResidentGuild is not set, cannot continue for now.");
+                return;
+            }
+
+            if (!Settings.Operators.Contains(Context.Message.Author.Id))
+            {
+                await ReplyAsync("This command requires admin/operator privileges.");
+                return;
+            }
+
+            var target = Bot.Instance.RoleByName(roleName);
+            if (target == null)
+            {
+                await ReplyAsync(Context.Message.Author.Mention + ": Nenasli jsme roli.");
+                return;
+            }
+
+            _ = Bot.Instance.DelayedRolePing(Context.Message.Channel, target);
 
         }
 
