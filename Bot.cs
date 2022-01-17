@@ -20,6 +20,15 @@ using Newtonsoft.Json;
 
 namespace RoboModerator
 {
+    class BotProperties
+    {
+        public DiscordGuilds Guilds;
+
+        public BotProperties(DiscordGuilds g)
+        {
+            Guilds = g;
+        }
+    }
     class Bot
     {
         public static Bot Instance;
@@ -31,6 +40,11 @@ namespace RoboModerator
         private IServiceProvider services;
         private Dictionary<string, ulong> groupNameToID;
         private bool initComplete = false;
+        // private DiscordGuilds _guilds;
+        private ButtonHandler _bh;
+        private EventOrganizer _orga;
+        private BotProperties _p;
+      
 
         HashSet<ulong> _highlightedToday;
         DateTime _highlightSetDate;
@@ -399,6 +413,11 @@ namespace RoboModerator
             {
                 await JoinedAtAsync(command);
             }
+
+            if(command.CommandName == "customs-new-week")
+            {
+                await _orga.CustomsNewWeekAsync(command);
+            }
         }
 
         public async Task ClientReadyAsync()
@@ -410,11 +429,52 @@ namespace RoboModerator
             FetchGroupIDs();
             // Do only once:
             // await BuildSlashCommandsAsync(this.ResidentGuild);
+            DiscordGuilds g = new DiscordGuilds();
+            DiscordGuild resGuild = new DiscordGuild(this.ResidentGuild);
+            g.Add(resGuild);
+            _p = new BotProperties(g);
+            _orga = new EventOrganizer(_p);
+
+            await _orga.RecoverDataAsync();
+
+            // Run only once.
+
+            // await _orga.GenerateSlashCommandAsync(client);
+            // await resGuild.GiveEveryoneARoleAsync("Chill Veterán");
+
+            _bh = new ButtonHandler(_p);
+
+            // await TestingAsync();
+
+            // Creating a button.
+            // TODO: Move somewhere else, this is only for testing.
+
+            SocketGuildChannel ch = ResidentGuild.Channels.FirstOrDefault(x => x.Name == "🔔oznámení");
+            var textChannel = ch as SocketTextChannel;
+
+            var m = await textChannel.GetMessageAsync(930278276327428187);
+
+            if (m == null)
+            {
+                var builder = new ComponentBuilder();
+                builder.WithButton("Zapojit do soutěže", "add-contest");
+                builder.WithButton("Opustit soutěž", "remove-contest");
+                await textChannel.SendMessageAsync("Přihlaste se do soutěže knoflíkem!",
+                    components: builder.Build());
+            }
+
+            // End button building.
+            client.ButtonExecuted += _bh.ButtonHandlerAsync;
+            client.ButtonExecuted += _orga.EventButtonHandlerAsync;
+
         }
 
         public async Task RunBotAsync()
         {
-            client = new DiscordSocketClient();
+            var config = new DiscordSocketConfig();
+            config.GatewayIntents = GatewayIntents.All;
+
+            client = new DiscordSocketClient(config);
             commands = new CommandService();
             services = new ServiceCollection()
                 .AddSingleton(client)
@@ -454,6 +514,33 @@ namespace RoboModerator
             // }
 
             await new Bot().RunBotAsync();
+        }
+
+
+        /// <summary>
+        /// Some testing in order to make sure the bot can change roles.
+        /// </summary>
+        /// <returns></returns>
+        public async Task TestingAsync()
+        {
+            int totalUsers = ResidentGuild.Users.Count();
+            Console.WriteLine($"The total number of users is {totalUsers}");
+
+            var docOrson = ResidentGuild.Users.FirstOrDefault(x => x.Username == "DoctorOrson");
+
+            if (docOrson == null)
+            {
+                Console.WriteLine("Something is wrong, there is no doctor Orson.");
+                throw new Exception();
+            }
+
+            var secondDocOrson =  _p.Guilds.byId[ResidentGuild.Id].GetSingleUser(docOrson.Id);
+
+            if (secondDocOrson == null)
+            {
+                Console.WriteLine("Something is wrong, there is no doctor Orson via custom guild API.");
+                throw new Exception();
+            }
         }
     }
 }
