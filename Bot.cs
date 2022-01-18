@@ -418,6 +418,11 @@ namespace RoboModerator
             {
                 await _orga.CustomsNewWeekAsync(command);
             }
+
+            if (command.CommandName == "customs-refresh-signup")
+            {
+                await _orga.RefreshSignupCommandAsync(command);
+            }
         }
 
         public async Task ClientReadyAsync()

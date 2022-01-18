@@ -91,6 +91,7 @@ namespace RoboModerator
         private const ulong _botId = 747390449366466640;
         private string[] shortDayNames = { "Po", "Ut", "St", "Ct", "Pa", "So", "Ne" };
         private const string _backupFileName = "r6events.json";
+        private List<Emote> _emoteDayNames;
 
         public EventOrganizer(BotProperties props)
         {
@@ -100,6 +101,15 @@ namespace RoboModerator
             _targetChannel = _targetGuild.GetChannel(_targetChannelName);
             _backupChannel = _targetGuild.GetChannel(_backupChannelName);
 
+            _emoteDayNames = new List<Emote> {
+                              Emote.Parse("<:pondeli:854328055799742485>"),
+                              Emote.Parse("<:utery:854331942254149673>"),
+                              Emote.Parse("<:streda:854331955964411914>"),
+                              Emote.Parse("<:ctvrtek:854331971655827456>"),
+                              Emote.Parse("<:patek:854331983349284894>"),
+                              Emote.Parse("<:sobota:854331997799448626>"),
+                              Emote.Parse("<:nedele:854332011807506442>")
+            };
         }
 
         public string BuildMessage()
@@ -107,10 +117,26 @@ namespace RoboModerator
             StringBuilder messageBuilder = new StringBuilder();
             messageBuilder.Append("Rozpis: \n");
             int day = 0;
+            int dayOfTheWeek = ((int)DateTime.Today.DayOfWeek + 6) % 7;
+
             foreach (var weeklyList in _data.SignUpLists)
             {
                 StringBuilder weekBuilder = new StringBuilder();
-                weekBuilder.Append($"{shortDayNames[day]}: ");
+                if (dayOfTheWeek > day)
+                {
+                    weekBuilder.Append("~~");
+                }
+                weekBuilder.Append($"{_emoteDayNames[day]}");
+                // weekBuilder.Append($"{shortDayNames[day]}: ");
+
+                // Write a parenthesis on how many people are signed up
+                weekBuilder.Append($" ({Math.Min(10,weeklyList.Count)}");
+                if (weeklyList.Count > 10)
+                {
+                    weekBuilder.Append($" + {weeklyList.Count - 10}");
+                }
+                weekBuilder.Append("): ");
+
                 bool first = true;
                 int userOrder = 0;
                 foreach (ulong userId in weeklyList)
@@ -138,8 +164,13 @@ namespace RoboModerator
                         throw new Exception("Could not find the user that joined for this event.");
                     }
 
-                    weekBuilder.Append(nextName);
+                    weekBuilder.Append(Discord.Format.Sanitize(nextName));
                     userOrder++;
+                }
+
+                if (dayOfTheWeek > day)
+                {
+                    weekBuilder.Append("~~");
                 }
 
                 messageBuilder.Append(weekBuilder.ToString());
@@ -344,6 +375,18 @@ namespace RoboModerator
             {
                 Console.WriteLine($"RoboModerator: Guild command build error {e.HttpCode}:  {e.Message}");
             }
+
+            SlashCommandBuilder refreshSignupCommand = new SlashCommandBuilder();
+            refreshSignupCommand.WithName("customs-refresh-signup");
+            refreshSignupCommand.WithDescription("Refresh the signup text. Only the admin can do this.");
+            try
+            {
+                await client.Rest.CreateGuildCommand(refreshSignupCommand.Build(), _targetGuild.Id);
+            }
+            catch (HttpException e)
+            {
+                Console.WriteLine($"RoboModerator: Refresh signup build error {e.HttpCode}:  {e.Message}");
+            }
         }
 
         public async Task CustomsNewWeekAsync(SocketSlashCommand command)
@@ -356,6 +399,21 @@ namespace RoboModerator
 
             await SendNewMessagesAsync();
             await command.RespondAsync("Created!", ephemeral: true);
+        }
+
+        public async Task RefreshSignupCommandAsync(SocketSlashCommand command)
+        {
+            if (!Settings.Operators.Contains(command.User.Id))
+            {
+                await command.RespondAsync("Only the admins can run this.", ephemeral: true);
+                return;
+            }
+
+            await _lock.WaitAsync();
+            await UpdateSignupMessageAsync();
+            _lock.Release();
+
+            await command.RespondAsync($"Refreshed!", ephemeral: true);
         }
 
         public async Task BuildButtonMessageAsync()
