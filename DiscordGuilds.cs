@@ -1,4 +1,5 @@
-﻿using Discord.WebSocket;
+﻿using Discord;
+using Discord.WebSocket;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,6 +21,22 @@ namespace RoboModerator
             byId = new Dictionary<ulong, DiscordGuild>();
         }
 
+        public DiscordGuilds(BackupGuildConfiguration guildConfs, DiscordSocketClient sc)
+        {
+            guildList = new List<DiscordGuild>();
+            byName = new Dictionary<string, DiscordGuild>();
+            byId = new Dictionary<ulong, DiscordGuild>();
+            foreach (var gc in guildConfs.guildList)
+            {
+                SocketGuild sg = sc.GetGuild(gc.id);
+                DiscordGuild guild = new DiscordGuild(gc, sg);
+                guildList.Add(guild);
+                byName.Add(guild.GetName(), guild);
+                byId.Add(guild._socket.Id, guild);
+                Console.WriteLine($"Connected to server {guild.GetName()}.");
+            }
+        }
+
         public void Add(DiscordGuild g)
         {
             if(byId.ContainsKey(g.Id) || byName.ContainsKey(g.GetName()))
@@ -37,7 +54,8 @@ namespace RoboModerator
 
     class DiscordGuild
     {
-        private SocketGuild _socket;
+        public SocketGuild _socket;
+        public SingleGuildConfig Config;
 
         public ulong Id;
         public string GetName()
@@ -45,9 +63,9 @@ namespace RoboModerator
             return _socket.Name;
         }
 
-
-        public DiscordGuild(SocketGuild socket)
+        public DiscordGuild(SingleGuildConfig gc, SocketGuild socket)
         {
+            Config = gc;
             Id = socket.Id;
             _socket = socket;
         }
@@ -80,6 +98,11 @@ namespace RoboModerator
         {
             return _socket.Users.Where(x => ((x.Username == discNameOrNick) || (x.Nickname == discNameOrNick)));
 
+        }
+
+        public SocketRole RoleByName(string roleName)
+        {
+            return _socket.Roles.FirstOrDefault(x => (x.Name == roleName));
         }
 
         public string GetNicknameOrName(ulong discordId)
@@ -185,5 +208,15 @@ namespace RoboModerator
 
         }
 
+    }
+
+    class PrimaryDiscordGuild
+    {
+        public SocketGuild _socket; // soft TODO: make private
+        public PrimaryDiscordGuild(DiscordSocketClient sc)
+        {
+            _socket = sc.GetGuild(Settings.ControlGuild);
+            Console.WriteLine($"Connected to the primary Discord server {_socket.Name}.");
+        }
     }
 }

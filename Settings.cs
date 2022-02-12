@@ -10,6 +10,11 @@ namespace RoboModerator
         // For the main use of this bot, this is the ID of Discord server R6 Siege a Chill, a CZ/SK Discord server.
         public static ulong residenceID = 620608384227606528;
 
+        public static readonly ulong ControlGuild = 903649099541270528;
+        public const string PrimaryConfigurationChannel = "primary-configuration";
+        // If the primary configuration channel is empty, the following file is read instead.
+        public const string PrimaryConfigurationFile = @"primary.json";
+
         // IDs of: DoctorOrson.
         public static readonly ulong[] Operators = { 428263908281942038 };
         public static string botStatus = "Zavolejte mne pomoci !domovoj.";

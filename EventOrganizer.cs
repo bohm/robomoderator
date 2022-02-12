@@ -387,6 +387,21 @@ namespace RoboModerator
             {
                 Console.WriteLine($"RoboModerator: Refresh signup build error {e.HttpCode}:  {e.Message}");
             }
+
+            SlashCommandBuilder removePersonCammand = new SlashCommandBuilder();
+            removePersonCammand.WithName("customs-remove-person");
+            removePersonCammand.WithDescription("Removes a person from a particular day. Only the admin can do this.");
+            removePersonCammand.AddOption("user", ApplicationCommandOptionType.User, "The user to remove", isRequired: true);
+            removePersonCammand.AddOption("day", ApplicationCommandOptionType.Integer,
+                "The day of the week, Monday is 0.", isRequired: true);
+            try
+            {
+                await client.Rest.CreateGuildCommand(removePersonCammand.Build(), _targetGuild.Id);
+            }
+            catch (HttpException e)
+            {
+                Console.WriteLine($"RoboModerator: Remove person build error {e.HttpCode}:  {e.Message}");
+            }
         }
 
         public async Task CustomsNewWeekAsync(SocketSlashCommand command)
@@ -401,6 +416,45 @@ namespace RoboModerator
             await command.RespondAsync("Created!", ephemeral: true);
         }
 
+        public async Task CustomsRemovePersonAsync(SocketSlashCommand command)
+        {
+            if (!Settings.Operators.Contains(command.User.Id))
+            {
+                await command.RespondAsync("Only the admins can run this.", ephemeral: true);
+                return;
+            }
+
+            var user = (SocketGuildUser)command.Data.Options.First(x => x.Name == "user").Value;
+            Int64 sixtyFourBitDay = (Int64) command.Data.Options.First(x => x.Name == "day").Value;
+
+            if (sixtyFourBitDay >= 7 || sixtyFourBitDay < 0)
+            {
+                await command.RespondAsync("The parameter day needs to be between 0 and 6.", ephemeral: true);
+                return;
+            }
+
+            int day = Convert.ToInt32(sixtyFourBitDay);
+
+            await _lock.WaitAsync();
+
+            if (!_secondary.UserQuery[day].Contains(user.Id))
+            {
+                _lock.Release();
+                await command.RespondAsync($"The user {user.Username} is not signed up for {shortDayNames[day]}.",
+                    ephemeral: true);
+                return;
+            } else
+            {
+                _data.SignUpLists[day].Remove(user.Id); // Technically, this is slow, but who cares.
+                _secondary.UserQuery[day].Remove(user.Id);
+
+                await BackupDataAsync();
+                await UpdateSignupMessageAsync();
+                _lock.Release();
+                await command.RespondAsync($"User{user.Username} removed from event {shortDayNames[day]}!", ephemeral: true);
+            }
+        }
+
         public async Task RefreshSignupCommandAsync(SocketSlashCommand command)
         {
             if (!Settings.Operators.Contains(command.User.Id))
@@ -410,6 +464,7 @@ namespace RoboModerator
             }
 
             await _lock.WaitAsync();
+
             await UpdateSignupMessageAsync();
             _lock.Release();
 

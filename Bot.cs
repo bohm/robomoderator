@@ -29,11 +29,11 @@ namespace RoboModerator
             Guilds = g;
         }
     }
-    class Bot
+    partial class Bot
     {
         public static Bot Instance;
         // The guild we are operating on. We start doing things only once this is no longer null.
-        public Discord.WebSocket.SocketGuild ResidentGuild;
+        // public Discord.WebSocket.SocketGuild ResidentGuild;
 
         private DiscordSocketClient client;
         private CommandService commands;
@@ -44,7 +44,13 @@ namespace RoboModerator
         private ButtonHandler _bh;
         private EventOrganizer _orga;
         private BotProperties _p;
-      
+
+        private PrimaryDiscordGuild _primary;
+        private DiscordGuilds _guilds;
+
+        private bool _primaryServerLoaded = false;
+
+        public SocketGuild ResidentGuild;
 
         HashSet<ulong> _highlightedToday;
         DateTime _highlightSetDate;
@@ -90,33 +96,6 @@ namespace RoboModerator
             var otherGameChannels = Guild.VoiceChannels.Where(x => x.Name.Contains(Settings.otherGameLobbyPrefix));
             return otherGameChannels;
         }
-
-        /*
-        public string GuessOtherGame(Discord.WebSocket.SocketGuild Guild, Discord.WebSocket.SocketVoiceChannel lobby)
-        {
-            string activity = null;
-            if (lobby != null)
-            {
-                foreach (Discord.WebSocket.SocketGuildUser user in lobby.Users)
-                {
-                    string username = user.Username;
-
-                    if (user.Activity != null)
-                    {
-                        activity = user.Activity.ToString();
-                        // Console.WriteLine(nickname + "is doing " + activity + "in " + lobby.Name + ".");
-                        break;
-                    }
-                    else
-                    {
-                        Console.WriteLine(username + "is doing something private in " + lobby.Name + ".");
-                    }
-                }
-            }
-
-            return activity;
-        }
-        */
 
         public void CheckDateRollover()
         {
@@ -186,81 +165,6 @@ namespace RoboModerator
             }
         }
 
-        /*
-        public async Task UpdateNames()
-        {
-            // Do nothing until the bot is attached to a guild/server.
-            if (Bot.Instance.ResidentGuild == null)
-            {
-                Console.WriteLine("Resident guild is null, cannot proceed with UpdateNames for now.");
-                return;
-            }
-
-            Discord.WebSocket.SocketGuild Guild = Bot.Instance.ResidentGuild;
-            for (int i = 0; i < otherGameLobbyIds.Count; i++)
-            {
-                Discord.WebSocket.SocketVoiceChannel lobby = Guild.VoiceChannels.FirstOrDefault(y => y.Id == otherGameLobbyIds[i]);
-                // Discord.WebSocket.SocketVoiceChannel lobby = otherGameLobbies[i];
-                if (lobby == null)
-                {
-                    Console.WriteLine("Lobby cannot be found, which is strange and we cannot proceed further with the update.");
-                    break;
-                }
-
-                string act = GuessOtherGame(this.ResidentGuild, lobby);
-                if (act != null)
-                {
-                    if (!act.Equals(otherGames[i]))
-                    {
-                        if (lobby != null)
-                        {
-                            string newName = FancyName(act, i);
-                            string currentName = lobby.Name;
-                            if (!currentName.Equals(newName))
-                            {
-                                otherGames[i] = act;
-                                Console.WriteLine("Renaming " + lobby.Name + " to " + newName + ".");
-                                await lobby.ModifyAsync(prop => prop.Name = newName);
-                            }
-                        }
-                    }
-                }
-                else // no activity detected, set default name
-                {
-                    if (lobby != null)
-                    {
-                        string newName = DefaultName(i);
-                        string currentName = lobby.Name;
-                        if (!currentName.Equals(newName))
-                        {
-                            otherGames[i] = "";
-                            Console.WriteLine("Renaming " + lobby.Name + " to " + newName + ".");
-                            await lobby.ModifyAsync(prop => prop.Name = newName);
-                        }
-                    }
-                }
-            }
-        }
-        */
-
-        public async Task ResidenceInit()
-        {
-            await Access.WaitAsync();
-
-            List<Discord.WebSocket.SocketVoiceChannel> otherGameLobbies = GetLobbies(this.ResidentGuild).ToList();
-            Console.WriteLine("Other game channel ids:");
-            foreach (var lobby in otherGameLobbies)
-            {
-                Console.WriteLine("Lobby found with name " + lobby.Name + " and id " + lobby.Id + ".");
-                otherGames.Add(lobby.Name);
-                otherGameLobbyIds.Add(lobby.Id);
-            }
-
-
-            Access.Release();
-            initComplete = true;
-        }
-
         private Task Log(LogMessage arg)
         {
             Console.WriteLine(arg);
@@ -271,28 +175,6 @@ namespace RoboModerator
         {
             client.MessageReceived += HandleCommandAsync;
             await commands.AddModulesAsync(Assembly.GetEntryAssembly(), services);
-        }
-
-        private void FetchGroupIDs()
-        {
-            groupNameToID.Clear();
-            foreach (string name in Settings.LoudMetalRoles)
-            {
-                SocketRole role = this.ResidentGuild.Roles.First(x => x.Name == name);
-                if (role != null)
-                {
-                    groupNameToID.Add(name, role.Id);
-                }
-            }
-
-            foreach (string name in Settings.LoudDigitRoles)
-            {
-                SocketRole role = this.ResidentGuild.Roles.First(x => x.Name == name);
-                if (role != null)
-                {
-                    groupNameToID.Add(name, role.Id);
-                }
-            }
         }
 
         public async Task DelayedUserPing(Discord.WebSocket.ISocketMessageChannel chan, Discord.WebSocket.SocketGuildUser user)
@@ -423,6 +305,11 @@ namespace RoboModerator
             {
                 await _orga.RefreshSignupCommandAsync(command);
             }
+
+            if (command.CommandName == "customs-remove-person")
+            {
+                await _orga.CustomsRemovePersonAsync(command);
+            }
         }
 
         public async Task ClientReadyAsync()
@@ -430,12 +317,17 @@ namespace RoboModerator
             this._highlightSetDate = DateTime.Now;
             this._highlightedToday = new HashSet<ulong>();
             this.ResidentGuild = client.GetGuild(Settings.residenceID);
+
+            _primary = new PrimaryDiscordGuild(client);
+            BackupGuildConfiguration gc = await RestoreGuildConfigurationAsync();
+
             Console.WriteLine("Setting up residence in Discord guild " + this.ResidentGuild.Name);
-            FetchGroupIDs();
             // Do only once:
             // await BuildSlashCommandsAsync(this.ResidentGuild);
-            DiscordGuilds g = new DiscordGuilds();
-            DiscordGuild resGuild = new DiscordGuild(this.ResidentGuild);
+
+            DiscordGuilds g = new DiscordGuilds(gc, client);
+            DiscordGuild resGuild = g.byId[Settings.residenceID]; // Hardcoded for now.
+
             g.Add(resGuild);
             _p = new BotProperties(g);
             _orga = new EventOrganizer(_p);
@@ -451,24 +343,6 @@ namespace RoboModerator
 
             // await TestingAsync();
 
-            // Creating a button.
-            // TODO: Move somewhere else, this is only for testing.
-
-            SocketGuildChannel ch = ResidentGuild.Channels.FirstOrDefault(x => x.Name == "🔔oznámení");
-            var textChannel = ch as SocketTextChannel;
-
-            var m = await textChannel.GetMessageAsync(930278276327428187);
-
-            if (m == null)
-            {
-                var builder = new ComponentBuilder();
-                builder.WithButton("Zapojit do soutěže", "add-contest");
-                builder.WithButton("Opustit soutěž", "remove-contest");
-                await textChannel.SendMessageAsync("Přihlaste se do soutěže knoflíkem!",
-                    components: builder.Build());
-            }
-
-            // End button building.
             client.ButtonExecuted += _bh.ButtonHandlerAsync;
             client.ButtonExecuted += _orga.EventButtonHandlerAsync;
 

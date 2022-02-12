@@ -47,6 +47,7 @@ v budoucnosti.");
             }
         }
 
+
         // -- The commands below are primarily administrative and testing in nature. --
 
         [Command("manualclear")]
@@ -71,17 +72,13 @@ v budoucnosti.");
         [Command("delayeduserping")]
         public async Task DelayedUserPing(string discordNick)
         {
-            if (Bot.Instance.ResidentGuild == null)
-            {
-                await ReplyAsync("ResidentGuild is not set, cannot continue for now.");
-                return;
-            }
-
             if (!Settings.Operators.Contains(Context.Message.Author.Id))
             {
                 await ReplyAsync("This command requires admin/operator privileges.");
                 return;
             }
+
+            ulong guildId = Context.Guild.Id;
 
             var target = Bot.Instance.UserByName(discordNick);
             if (target == null)
