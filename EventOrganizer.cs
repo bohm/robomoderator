@@ -161,7 +161,7 @@ namespace RoboModerator
                         // This can actually happen if a user signs up, then leaves the server.
                         // Fix it somehow?
 
-                        throw new Exception("Could not find the user that joined for this event.");
+                        throw new Exception($"Could not find the user with id {userId} that joined for this event.");
                     }
 
                     weekBuilder.Append(Discord.Format.Sanitize(nextName));
