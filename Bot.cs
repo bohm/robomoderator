@@ -20,15 +20,26 @@ using Newtonsoft.Json;
 
 namespace RoboModerator
 {
+    /// <summary>
+    /// Properties of Bot which are detached so that they can be passed to various subsystems/plugins.
+    /// The subsystems can for example communicate with Discord guilds without accessing the Bot object itself.
+    /// </summary>
     class BotProperties
     {
         public DiscordGuilds Guilds;
+        public PrimaryDiscordGuild Primary;
 
-        public BotProperties(DiscordGuilds g)
+        public BotProperties(PrimaryDiscordGuild p)
+        {
+            Primary = p;
+        }
+
+        public BotProperties(PrimaryDiscordGuild p, DiscordGuilds g)
         {
             Guilds = g;
         }
     }
+
     partial class Bot
     {
         public static Bot Instance;
@@ -318,25 +329,29 @@ namespace RoboModerator
             this._highlightedToday = new HashSet<ulong>();
             this.ResidentGuild = client.GetGuild(Settings.residenceID);
 
-            _primary = new PrimaryDiscordGuild(client);
+            // Connect to the primary configuration server and initialize BotProperties -- with a null guild list, currently.
+            _p = new BotProperties(new PrimaryDiscordGuild(client));
+
             BackupGuildConfiguration gc = await RestoreGuildConfigurationAsync();
 
-            Console.WriteLine("Setting up residence in Discord guild " + this.ResidentGuild.Name);
             // Do only once:
-            // await BuildSlashCommandsAsync(this.ResidentGuild);
 
             DiscordGuilds g = new DiscordGuilds(gc, client);
             DiscordGuild resGuild = g.byId[Settings.residenceID]; // Hardcoded for now.
 
-            g.Add(resGuild);
-            _p = new BotProperties(g);
+            // g.Add(resGuild);
+
+            _p.Guilds = g; // Insert guilds into BotProperties -- they should be good to go by this line.
             _orga = new EventOrganizer(_p);
-
-            await _orga.RecoverDataAsync();
-
+            await _orga.InitializeAsync();
             // Run only once.
 
-            // await _orga.GenerateSlashCommandAsync(client);
+            if (Settings.GenerateSlashCommands)
+            {
+                await BuildSlashCommandsAsync(this.ResidentGuild);
+                await _orga.GenerateGuildCommandsAsync(client);
+            }
+
             // await resGuild.GiveEveryoneARoleAsync("Chill Veterán");
 
             _bh = new ButtonHandler(_p);

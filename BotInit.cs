@@ -18,7 +18,7 @@ namespace RoboModerator
                 throw new PrimaryGuildException("Primary guild (Discord server) did not load and yet RestoreGuildConfiguration() is called.");
             }
 
-            BackupSystem<BackupGuildConfiguration> configRecovery = new BackupSystem<BackupGuildConfiguration>(_primary,
+            BackupSystem<BackupGuildConfiguration> configRecovery = new BackupSystem<BackupGuildConfiguration>(_p.Primary,
                 Settings.PrimaryConfigurationChannel, Settings.PrimaryConfigurationFile);
 
             BackupGuildConfiguration gc = await configRecovery.RecoverAsync();

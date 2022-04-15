@@ -10,13 +10,24 @@ namespace RoboModerator
         // For the main use of this bot, this is the ID of Discord server R6 Siege a Chill, a CZ/SK Discord server.
         public static ulong residenceID = 620608384227606528;
 
+        // Your own ID, to recognize bot's own messages. This could be done smarter in the future.
+        public static ulong BotID = 747390449366466640;
         public static readonly ulong ControlGuild = 903649099541270528;
-        public const string PrimaryConfigurationChannel = "primary-configuration";
+        public const string PrimaryConfigurationChannel = "robomod-primary-config";
         // If the primary configuration channel is empty, the following file is read instead.
-        public const string PrimaryConfigurationFile = @"primary.json";
+        public const string PrimaryConfigurationFile = @"robomod-primary.json";
+
+        // Channel (in the primary configuration guild) which hosts the information on events.
+        public const string EventConfigurationChannel = "robomod-event-config";
+        public const string EventConfigurationFile = @"robomod-event.json";
+
 
         // IDs of: DoctorOrson.
         public static readonly ulong[] Operators = { 428263908281942038 };
+
+        // Boolean controlling whether slash command regeneration should be run.
+        public const bool GenerateSlashCommands = false;
+
         public static string botStatus = "Zavolejte mne pomoci !domovoj.";
         public static string otherGameLobbyPrefix = "Jiná hra";
 

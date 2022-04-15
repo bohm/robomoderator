@@ -15,80 +15,24 @@ using Newtonsoft.Json;
 namespace RoboModerator
 {
 
-    class OrganizerCoreData
-    {
-        public ulong MessageWithButtons;
-        public ulong MessageWithSignups;
-        public List<List<ulong>> SignUpLists;
-
-        public void FillGaps()
-        {
-            if (SignUpLists == null)
-            {
-                SignUpLists = new List<List<ulong>>();
-            }
-
-            while (SignUpLists.Count < 7)
-            {
-                 SignUpLists.Add(new List<ulong>());
-            }
-        }
-
-        public void Clear()
-        {
-            foreach(var signup in SignUpLists)
-            {
-                signup.Clear();
-            }
-
-            MessageWithButtons = 0;
-            MessageWithSignups = 0;
-        }
-    }
-
-    class OrganizerSecondaryData
-    {
-        public List<HashSet<ulong>> UserQuery;
-
-        public OrganizerSecondaryData(OrganizerCoreData cd)
-        {
-            UserQuery = new List<HashSet<ulong>>();
-            foreach (var weeklyList in cd.SignUpLists)
-            {
-                HashSet<ulong> userSet = new HashSet<ulong>();
-                foreach (var user in weeklyList)
-                {
-                    userSet.Add(user);
-                }
-                UserQuery.Add(userSet);
-            }
-        }
-
-        public void Clear()
-        {
-            foreach(var week in UserQuery)
-            {
-                week.Clear();
-            }
-        }
-    }
-
     class EventOrganizer
     {
         private BotProperties _p;
+        private OrganizerProperties _op;
         private SemaphoreSlim _lock;
         private OrganizerCoreData _data;
-        private OrganizerSecondaryData _secondary;
-        private DiscordGuild _targetGuild;
+        private OrganizerProperties _secondary;
+        // private DiscordGuild _targetGuild;
         private SocketTextChannel _targetChannel;
         private SocketTextChannel _backupChannel;
 
+        private BackupSystem<OrganizerCoreData> _coreDataRecovery;
         // Hardcoded for now.
-        private const ulong _targetDiscord = 620608384227606528;
-        private const string _targetChannelName = "🔔oznámení-customek";
+        // private const ulong _targetDiscord = 620608384227606528;
+        // private const string _targetChannelName = "🔔oznámení-customek";
         // private const string _targetChannelName = "rank-bot-admin"; // Debug.
-        private const string _backupChannelName = "robomoderator-backups"; // Debug.
-        private const ulong _botId = 747390449366466640;
+        // private const string _backupChannelName = "robomoderator-backups"; // Debug.
+        // private const ulong _botId = 747390449366466640;
         private string[] shortDayNames = { "Po", "Ut", "St", "Ct", "Pa", "So", "Ne" };
         private const string _backupFileName = "r6events.json";
         private List<Emote> _emoteDayNames;
@@ -97,9 +41,9 @@ namespace RoboModerator
         {
             _p = props;
             _lock = new SemaphoreSlim(1, 1);
-            _targetGuild = _p.Guilds.byId[_targetDiscord];
-            _targetChannel = _targetGuild.GetChannel(_targetChannelName);
-            _backupChannel = _targetGuild.GetChannel(_backupChannelName);
+            // _targetGuild = _p.Guilds.byId[_targetDiscord];
+            // _targetChannel = _targetGuild.GetChannel(_targetChannelName);
+            // _backupChannel = _targetGuild.GetChannel(_backupChannelName);
 
             _emoteDayNames = new List<Emote> {
                               Emote.Parse("<:pondeli:854328055799742485>"),
@@ -110,16 +54,44 @@ namespace RoboModerator
                               Emote.Parse("<:sobota:854331997799448626>"),
                               Emote.Parse("<:nedele:854332011807506442>")
             };
+
+            // Recover backup data.
+
+        }
+        
+        /// <summary>
+        /// Initializes the OrganizerProperties structures, which means that it runs the recovery process from the Discord message channels.
+        /// In principle, it can be integrated into the constructor, but it requires to be async, which is why we do it separately.
+        /// </summary>
+        /// <returns></returns>
+        public async Task InitializeAsync()
+        {
+            _coreDataRecovery = new BackupSystem<OrganizerCoreData>(_p.Primary,
+                Settings.EventConfigurationChannel, Settings.EventConfigurationFile);
+
+            OrganizerCoreData cd = await _coreDataRecovery.RecoverAsync();
+            foreach (var singleEventData in cd.DataList)
+            {
+                singleEventData.FillGaps();
+            }
+
+            _op = new OrganizerProperties(cd);
         }
 
-        public string BuildMessage()
+
+        public string BuildMessage(ulong targetGuild)
         {
+            // First, recover event data of the target guild.
+            SingleGuildEventData data = _op.PrimaryById[targetGuild];
+            // Also, recover the Discord API for the target guild.
+            DiscordGuild targetAPI = _p.Guilds.byId[targetGuild];
+
             StringBuilder messageBuilder = new StringBuilder();
             messageBuilder.Append("Rozpis: \n");
             int day = 0;
             int dayOfTheWeek = ((int)DateTime.Today.DayOfWeek + 6) % 7;
 
-            foreach (var weeklyList in _data.SignUpLists)
+            foreach (var weeklyList in data.SignUpLists)
             {
                 StringBuilder weekBuilder = new StringBuilder();
                 if (dayOfTheWeek > day)
@@ -155,7 +127,7 @@ namespace RoboModerator
                         first = false;
                     }
 
-                    string nextName = _targetGuild.GetNicknameOrName(userId);
+                    string nextName = targetAPI.GetNicknameOrName(userId);
                     if (nextName == null)
                     {
                         // This can actually happen if a user signs up, then leaves the server.
@@ -183,6 +155,14 @@ namespace RoboModerator
 
         public async Task EventButtonHandlerAsync(SocketMessageComponent component)
         {
+            // First, find the target guild.
+            // We only parse buttons from guild messages currently, so this should be fine.
+            SocketGuildChannel contextChannel = component.Channel as SocketGuildChannel;
+            ulong contextGuildId = contextChannel.Guild.Id;
+            DiscordGuild targetAPI = _p.Guilds.byId[contextGuildId];
+            SingleGuildEventData data = _op.PrimaryById[contextGuildId];
+            SingleGuildSecondaryData secondary = _op.SecondaryById[contextGuildId];
+
             // All buttons contain the word event.
             string customId = component.Data.CustomId;
             Console.WriteLine($"Button triggered, custom id {customId}");
@@ -218,26 +198,26 @@ namespace RoboModerator
 
             bool addition = true;
 
-            if (_secondary.UserQuery[numericalDay].Contains(userId))
+            if (secondary.UserQuery[numericalDay].Contains(userId))
             {
                 // Removal.
                 addition = false;
-                _data.SignUpLists[numericalDay].Remove(userId); // Technically, this is slow, but who cares.
-                _secondary.UserQuery[numericalDay].Remove(userId);
+                data.SignUpLists[numericalDay].Remove(userId); // Technically, this is slow, but who cares.
+                secondary.UserQuery[numericalDay].Remove(userId);
             }
             else
             {
                 addition = true;
                 // Addition.
-                _data.SignUpLists[numericalDay].Add(component.User.Id);
-                _secondary.UserQuery[numericalDay].Add(component.User.Id);
+                data.SignUpLists[numericalDay].Add(component.User.Id);
+                secondary.UserQuery[numericalDay].Add(component.User.Id);
 
             }
             // Backup the data.
             await BackupDataAsync();
 
             // Update the sign sheet message.
-            await UpdateSignupMessageAsync();
+            await UpdateSignupMessageAsync(contextGuildId);
 
             _lock.Release();
 
@@ -253,171 +233,134 @@ namespace RoboModerator
 
         }
 
-        public async Task UpdateSignupMessageAsync()
+        public async Task UpdateSignupMessageAsync(ulong targetGuild)
         {
-            if (_data.MessageWithSignups == 0)
+            // First, recover event data of the target guild.
+            SingleGuildEventData data = _op.PrimaryById[targetGuild];
+            // Also, recover the Discord API for the target guild.
+            DiscordGuild targetAPI = _p.Guilds.byId[targetGuild];
+
+            SocketTextChannel targetChannel = targetAPI.GetChannel(data.GuildAnnounceChannel);
+            if (data.MessageWithSignups == 0)
             {
                 return;
             }
 
-            string newText = BuildMessage();
-            var msg = await _targetChannel.GetMessageAsync(_data.MessageWithSignups);
+            string newText = BuildMessage(targetGuild);
+            var msg = await targetChannel.GetMessageAsync(data.MessageWithSignups);
             var oldMessage = msg as IUserMessage;
             await oldMessage.ModifyAsync(x => x.Content = newText);
         }
 
-        public async Task RecoverDataAsync()
-        {
-            await _lock.WaitAsync();
-            bool newBuild = false;
-            var amsg = _backupChannel.GetMessagesAsync();
-            IAsyncEnumerable<IMessage> messages = null;
-            IMessage[] msgarray = null;
-            OrganizerCoreData o = null;
-
-            if (amsg == null)
-            {
-                newBuild = true;
-            }
-            else
-            {
-                messages = _backupChannel.GetMessagesAsync().Flatten();
-                msgarray = await messages.ToArrayAsync();
-
-                if (msgarray.Count() != 1)
-                {
-                    newBuild = true;
-                }
-            }
-
-            if(newBuild)
-            {
-                Console.WriteLine("Warning: Recovery failed, creating structures anew.");
-                o = new OrganizerCoreData();
-                o.SignUpLists = new List<List<ulong>>();
-                for (int day = 0; day < 7; day++)
-                {
-                    o.SignUpLists.Add(new List<ulong>());
-                }
-
-                o.MessageWithButtons = 0;
-                o.MessageWithSignups = 0;
-            }
-            else
-            {
-
-                var client = new HttpClient();
-                var dataString = await client.GetStringAsync(msgarray[0].Attachments.First().Url);
-                TextReader stringr = new StringReader(dataString);
-                JsonSerializer serializer = new JsonSerializer();
-                o = (OrganizerCoreData)serializer.Deserialize(stringr, typeof(OrganizerCoreData));
-
-                o.FillGaps();
-            }
-
-            _data = o;
-            _secondary = new OrganizerSecondaryData(_data); // Initialize secondary structures.
-            _lock.Release();
-        }
-
         public async Task BackupDataAsync()
         {
-            // First, backup to a file.
-            JsonSerializer serializer = new JsonSerializer();
-            using (StreamWriter sw = new StreamWriter(_backupFileName))
-            using (JsonWriter jw = new JsonTextWriter(sw))
-            {
-                serializer.Serialize(jw, _data);
-            }
-
-            // With the file ready, back up to the channel.
-            // First, delete the previous backup. (This is why we also have a secondary backup.)
-            var messages = _backupChannel.GetMessagesAsync().Flatten();
-            var msgarray = await messages.ToArrayAsync();
-            if (msgarray.Count() > 1)
-            {
-                Console.WriteLine($"The bot found {msgarray.Count()} messages but can only delete one due to safety. Aborting backup.");
-            }
-
-            if (msgarray.Count() == 1)
-            {
-                await _backupChannel.DeleteMessageAsync(msgarray[0]);
-            }
-
-            // Now, upload the new backup.
-            await _backupChannel.SendFileAsync(_backupFileName, $"Backup file created at {DateTime.Now.ToShortTimeString()}.");
+            await _coreDataRecovery.BackupAsync(_data);
         }
 
-        public async Task SendNewMessagesAsync()
+        public async Task SendNewMessagesAsync(ulong targetGuild)
         {
+            // First, recover event data of the target guild.
+            SingleGuildEventData data = _op.PrimaryById[targetGuild];
+            SingleGuildSecondaryData secondary = _op.SecondaryById[targetGuild];
+
+            // Also, recover the Discord API for the target guild.
+            DiscordGuild targetAPI = _p.Guilds.byId[targetGuild];
+            SocketTextChannel targetChannel = targetAPI.GetChannel(data.GuildAnnounceChannel);
+
             await _lock.WaitAsync();
-            _data.Clear();
-            _secondary.Clear();
+            data.Clear();
+            secondary.Clear();
             await BuildButtonMessageAsync();
-            string signups = BuildMessage();
-            var signupsSent = await _targetChannel.SendMessageAsync(signups);
-            _data.MessageWithSignups = signupsSent.Id;
+            string signups = BuildMessage(targetGuild);
+            var signupsSent = await targetChannel.SendMessageAsync(signups);
+            data.MessageWithSignups = signupsSent.Id;
 
             await BackupDataAsync();
             _lock.Release();
         }
 
-        public async Task GenerateSlashCommandAsync(DiscordSocketClient client)
+        public async Task GenerateGuildCommandsAsync(DiscordSocketClient client)
         {
-            SlashCommandBuilder guildCommand = new SlashCommandBuilder();
-            guildCommand.WithName("customs-new-week");
-            guildCommand.WithDescription("Create custom signups for a new week. Only the admin can do this.");
-            try
-            {
-                await client.Rest.CreateGuildCommand(guildCommand.Build(), _targetGuild.Id);
-            }
-            catch (HttpException e)
-            {
-                Console.WriteLine($"RoboModerator: Guild command build error {e.HttpCode}:  {e.Message}");
-            }
 
-            SlashCommandBuilder refreshSignupCommand = new SlashCommandBuilder();
-            refreshSignupCommand.WithName("customs-refresh-signup");
-            refreshSignupCommand.WithDescription("Refresh the signup text. Only the admin can do this.");
-            try
+            foreach (var kvp in _op.PrimaryById)
             {
-                await client.Rest.CreateGuildCommand(refreshSignupCommand.Build(), _targetGuild.Id);
-            }
-            catch (HttpException e)
-            {
-                Console.WriteLine($"RoboModerator: Refresh signup build error {e.HttpCode}:  {e.Message}");
-            }
+                ulong guildId = kvp.Key;
 
-            SlashCommandBuilder removePersonCammand = new SlashCommandBuilder();
-            removePersonCammand.WithName("customs-remove-person");
-            removePersonCammand.WithDescription("Removes a person from a particular day. Only the admin can do this.");
-            removePersonCammand.AddOption("user", ApplicationCommandOptionType.User, "The user to remove", isRequired: true);
-            removePersonCammand.AddOption("day", ApplicationCommandOptionType.Integer,
-                "The day of the week, Monday is 0.", isRequired: true);
-            try
-            {
-                await client.Rest.CreateGuildCommand(removePersonCammand.Build(), _targetGuild.Id);
-            }
-            catch (HttpException e)
-            {
-                Console.WriteLine($"RoboModerator: Remove person build error {e.HttpCode}:  {e.Message}");
+
+                SlashCommandBuilder guildCommand = new SlashCommandBuilder();
+                guildCommand.WithName("customs-new-week");
+                guildCommand.WithDescription("Create custom signups for a new week. Only the admin can do this.");
+                try
+                {
+                    await client.Rest.CreateGuildCommand(guildCommand.Build(), guildId);
+                }
+                catch (HttpException e)
+                {
+                    Console.WriteLine($"RoboModerator: Guild command build error {e.HttpCode}:  {e.Message}");
+                }
+
+                SlashCommandBuilder refreshSignupCommand = new SlashCommandBuilder();
+                refreshSignupCommand.WithName("customs-refresh-signup");
+                refreshSignupCommand.WithDescription("Refresh the signup text. Only the admin can do this.");
+                try
+                {
+                    await client.Rest.CreateGuildCommand(refreshSignupCommand.Build(), guildId);
+                }
+                catch (HttpException e)
+                {
+                    Console.WriteLine($"RoboModerator: Refresh signup build error {e.HttpCode}:  {e.Message}");
+                }
+
+                SlashCommandBuilder removePersonCammand = new SlashCommandBuilder();
+                removePersonCammand.WithName("customs-remove-person");
+                removePersonCammand.WithDescription("Removes a person from a particular day. Only the admin can do this.");
+                removePersonCammand.AddOption("user", ApplicationCommandOptionType.User, "The user to remove", isRequired: true);
+                removePersonCammand.AddOption("day", ApplicationCommandOptionType.Integer,
+                    "The day of the week, Monday is 0.", isRequired: true);
+                try
+                {
+                    await client.Rest.CreateGuildCommand(removePersonCammand.Build(), guildId);
+                }
+                catch (HttpException e)
+                {
+                    Console.WriteLine($"RoboModerator: Remove person build error {e.HttpCode}:  {e.Message}");
+                }
             }
         }
 
         public async Task CustomsNewWeekAsync(SocketSlashCommand command)
         {
+            // This command should only work as a discord guild command, so getting a discord ID should be
+            // possible.
+
+            SocketGuildChannel contextChannel = command.Channel as SocketGuildChannel;
+            if (contextChannel == null)
+            {
+                await command.RespondAsync($"Command {command.CommandName} internally failed: conversion error.");
+            }
+
             if (!Settings.Operators.Contains(command.User.Id))
             {
                 await command.RespondAsync("Only the admins can run this.", ephemeral: true);
                 return;
             }
 
-            await SendNewMessagesAsync();
+            await SendNewMessagesAsync(contextChannel.Guild.Id);
             await command.RespondAsync("Created!", ephemeral: true);
         }
 
         public async Task CustomsRemovePersonAsync(SocketSlashCommand command)
         {
+            // This command should only work as a discord guild command, so getting a discord ID should be
+            // possible.
+
+            SocketGuildChannel contextChannel = command.Channel as SocketGuildChannel;
+            if (contextChannel == null)
+            {
+                await command.RespondAsync($"Command {command.CommandName} internally failed: conversion error.");
+            }
+
+
             if (!Settings.Operators.Contains(command.User.Id))
             {
                 await command.RespondAsync("Only the admins can run this.", ephemeral: true);
