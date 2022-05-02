@@ -454,20 +454,6 @@ namespace RoboModerator
             // Creating a button.
             // TODO: Move somewhere else, this is only for testing.
 
-            SocketGuildChannel ch = ResidentGuild.Channels.FirstOrDefault(x => x.Name == "🔔oznámení");
-            var textChannel = ch as SocketTextChannel;
-
-            var m = await textChannel.GetMessageAsync(930278276327428187);
-
-            if (m == null)
-            {
-                var builder = new ComponentBuilder();
-                builder.WithButton("Zapojit do soutěže", "add-contest");
-                builder.WithButton("Opustit soutěž", "remove-contest");
-                await textChannel.SendMessageAsync("Přihlaste se do soutěže knoflíkem!",
-                    components: builder.Build());
-            }
-
             // End button building.
             client.ButtonExecuted += _bh.ButtonHandlerAsync;
             client.ButtonExecuted += _orga.EventButtonHandlerAsync;
