@@ -12,73 +12,14 @@ using Discord.Net;
 using Discord.WebSocket;
 using Newtonsoft.Json;
 
-namespace RoboModerator
+namespace RoboModerator.Events
 {
-
-    class OrganizerCoreData
-    {
-        public ulong MessageWithButtons;
-        public ulong MessageWithSignups;
-        public List<List<ulong>> SignUpLists;
-
-        public void FillGaps()
-        {
-            if (SignUpLists == null)
-            {
-                SignUpLists = new List<List<ulong>>();
-            }
-
-            while (SignUpLists.Count < 7)
-            {
-                 SignUpLists.Add(new List<ulong>());
-            }
-        }
-
-        public void Clear()
-        {
-            foreach(var signup in SignUpLists)
-            {
-                signup.Clear();
-            }
-
-            MessageWithButtons = 0;
-            MessageWithSignups = 0;
-        }
-    }
-
-    class OrganizerSecondaryData
-    {
-        public List<HashSet<ulong>> UserQuery;
-
-        public OrganizerSecondaryData(OrganizerCoreData cd)
-        {
-            UserQuery = new List<HashSet<ulong>>();
-            foreach (var weeklyList in cd.SignUpLists)
-            {
-                HashSet<ulong> userSet = new HashSet<ulong>();
-                foreach (var user in weeklyList)
-                {
-                    userSet.Add(user);
-                }
-                UserQuery.Add(userSet);
-            }
-        }
-
-        public void Clear()
-        {
-            foreach(var week in UserQuery)
-            {
-                week.Clear();
-            }
-        }
-    }
-
     class EventOrganizer
     {
         private BotProperties _p;
         private SemaphoreSlim _lock;
-        private OrganizerCoreData _data;
-        private OrganizerSecondaryData _secondary;
+        private CoreData _data;
+        private SecondaryData _secondary;
         private DiscordGuild _targetGuild;
         private SocketTextChannel _targetChannel;
         private SocketTextChannel _backupChannel;
@@ -116,66 +57,68 @@ namespace RoboModerator
         {
             StringBuilder messageBuilder = new StringBuilder();
             messageBuilder.Append("Rozpis: \n");
-            int day = 0;
             int dayOfTheWeek = ((int)DateTime.Today.DayOfWeek + 6) % 7;
 
-            foreach (var weeklyList in _data.SignUpLists)
+            for (int day = 0; day < 7; day++)
             {
-                StringBuilder weekBuilder = new StringBuilder();
-                if (dayOfTheWeek > day)
+                if (_data.eventHappening[day])
                 {
-                    weekBuilder.Append("~~");
-                }
-                weekBuilder.Append($"{_emoteDayNames[day]}");
-                // weekBuilder.Append($"{shortDayNames[day]}: ");
-
-                // Write a parenthesis on how many people are signed up
-                weekBuilder.Append($" ({Math.Min(10,weeklyList.Count)}");
-                if (weeklyList.Count > 10)
-                {
-                    weekBuilder.Append($" + {weeklyList.Count - 10}");
-                }
-                weekBuilder.Append("): ");
-
-                bool first = true;
-                int userOrder = 0;
-                foreach (ulong userId in weeklyList)
-                {
-                    if (userOrder == 10)
+                    var weeklyList = _data.SignUpLists[day];
+                    StringBuilder weekBuilder = new StringBuilder();
+                    if (dayOfTheWeek > day)
                     {
-                        weekBuilder.Append(" | N: ");
-                        first = true;
+                        weekBuilder.Append("~~");
                     }
-                    if (!first)
+                    weekBuilder.Append($"{_emoteDayNames[day]}");
+                    // weekBuilder.Append($"{shortDayNames[day]}: ");
+
+                    // Write a parenthesis on how many people are signed up
+                    weekBuilder.Append($" ({Math.Min(10, weeklyList.Count)}");
+                    if (weeklyList.Count > 10)
                     {
-                        weekBuilder.Append(", ");
+                        weekBuilder.Append($" + {weeklyList.Count - 10}");
                     }
-                    else
+                    weekBuilder.Append("): ");
+
+                    bool first = true;
+                    int userOrder = 0;
+                    foreach (ulong userId in weeklyList)
                     {
-                        first = false;
+                        if (userOrder == 10)
+                        {
+                            weekBuilder.Append(" | N: ");
+                            first = true;
+                        }
+                        if (!first)
+                        {
+                            weekBuilder.Append(", ");
+                        }
+                        else
+                        {
+                            first = false;
+                        }
+
+                        string nextName = _targetGuild.GetNicknameOrName(userId);
+                        if (nextName == null)
+                        {
+                            // This can actually happen if a user signs up, then leaves the server.
+                            // Fix it somehow?
+
+                            throw new Exception($"Could not find the user with id {userId} that joined for this event.");
+                        }
+
+                        weekBuilder.Append(Discord.Format.Sanitize(nextName));
+                        userOrder++;
                     }
 
-                    string nextName = _targetGuild.GetNicknameOrName(userId);
-                    if (nextName == null)
+                    if (dayOfTheWeek > day)
                     {
-                        // This can actually happen if a user signs up, then leaves the server.
-                        // Fix it somehow?
-
-                        throw new Exception($"Could not find the user with id {userId} that joined for this event.");
+                        weekBuilder.Append("~~");
                     }
 
-                    weekBuilder.Append(Discord.Format.Sanitize(nextName));
-                    userOrder++;
+                    messageBuilder.Append(weekBuilder.ToString());
+                    messageBuilder.Append("\n");
                 }
-
-                if (dayOfTheWeek > day)
-                {
-                    weekBuilder.Append("~~");
-                }
-
-                messageBuilder.Append(weekBuilder.ToString());
-                messageBuilder.Append("\n");
-                day++;
             }
 
             return messageBuilder.ToString();
@@ -273,7 +216,7 @@ namespace RoboModerator
             var amsg = _backupChannel.GetMessagesAsync();
             IAsyncEnumerable<IMessage> messages = null;
             IMessage[] msgarray = null;
-            OrganizerCoreData o = null;
+            CoreData o = null;
 
             if (amsg == null)
             {
@@ -293,7 +236,7 @@ namespace RoboModerator
             if(newBuild)
             {
                 Console.WriteLine("Warning: Recovery failed, creating structures anew.");
-                o = new OrganizerCoreData();
+                o = new CoreData();
                 o.SignUpLists = new List<List<ulong>>();
                 for (int day = 0; day < 7; day++)
                 {
@@ -310,13 +253,13 @@ namespace RoboModerator
                 var dataString = await client.GetStringAsync(msgarray[0].Attachments.First().Url);
                 TextReader stringr = new StringReader(dataString);
                 JsonSerializer serializer = new JsonSerializer();
-                o = (OrganizerCoreData)serializer.Deserialize(stringr, typeof(OrganizerCoreData));
+                o = (CoreData)serializer.Deserialize(stringr, typeof(CoreData));
 
                 o.FillGaps();
             }
 
             _data = o;
-            _secondary = new OrganizerSecondaryData(_data); // Initialize secondary structures.
+            _secondary = new SecondaryData(_data); // Initialize secondary structures.
             _lock.Release();
         }
 
@@ -348,11 +291,18 @@ namespace RoboModerator
             await _backupChannel.SendFileAsync(_backupFileName, $"Backup file created at {DateTime.Now.ToShortTimeString()}.");
         }
 
-        public async Task SendNewMessagesAsync()
+        public async Task SendNewMessagesAsync(List<bool> eventDays = null)
         {
             await _lock.WaitAsync();
             _data.Clear();
             _secondary.Clear();
+
+            // Make the planned event happen only on some days if eventDays != null.
+            if (eventDays != null)
+            {
+                _data.eventHappening = eventDays;
+            }
+
             await BuildButtonMessageAsync();
             string signups = BuildMessage();
             var signupsSent = await _targetChannel.SendMessageAsync(signups);
@@ -376,6 +326,18 @@ namespace RoboModerator
                 Console.WriteLine($"RoboModerator: Guild command build error {e.HttpCode}:  {e.Message}");
             }
 
+            SlashCommandBuilder weekendOnly = new SlashCommandBuilder();
+            guildCommand.WithName("customs-weekend");
+            guildCommand.WithDescription("Create custom signups for the next weekend. Only the admin can do this.");
+            try
+            {
+                await client.Rest.CreateGuildCommand(guildCommand.Build(), _targetGuild.Id);
+            }
+            catch (HttpException e)
+            {
+                Console.WriteLine($"RoboModerator: Guild command build error {e.HttpCode}:  {e.Message}");
+            }
+
             SlashCommandBuilder refreshSignupCommand = new SlashCommandBuilder();
             refreshSignupCommand.WithName("customs-refresh-signup");
             refreshSignupCommand.WithDescription("Refresh the signup text. Only the admin can do this.");
@@ -387,6 +349,8 @@ namespace RoboModerator
             {
                 Console.WriteLine($"RoboModerator: Refresh signup build error {e.HttpCode}:  {e.Message}");
             }
+
+
         }
 
         public async Task CustomsNewWeekAsync(SocketSlashCommand command)
@@ -398,6 +362,18 @@ namespace RoboModerator
             }
 
             await SendNewMessagesAsync();
+            await command.RespondAsync("Created!", ephemeral: true);
+        }
+
+        public async Task CustomsWeekendAsync(SocketSlashCommand command)
+        {
+            if (!Settings.Operators.Contains(command.User.Id))
+            {
+                await command.RespondAsync("Only the admins can run this.", ephemeral: true);
+                return;
+            }
+
+            await SendNewMessagesAsync(new List<bool>{ false, false, false, false, true, true, true});
             await command.RespondAsync("Created!", ephemeral: true);
         }
 
@@ -422,7 +398,11 @@ namespace RoboModerator
             var builder = new ComponentBuilder();
             for (int i = 0; i < 7; i++)
             {
-                builder.WithButton($"Prihlasit/Odhlasit na {shortDayNames[i]}", $"event-{i}");
+                if (_data.eventHappening[i])
+                {
+                    builder.WithButton($"Prihlasit/Odhlasit na {shortDayNames[i]}", $"event-{i}");
+                }
+
             }
 
 

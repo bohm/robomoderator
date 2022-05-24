@@ -17,6 +17,7 @@ using System.Diagnostics;
 using System.Text;
 using Discord.Net;
 using Newtonsoft.Json;
+using RoboModerator.Events;
 
 namespace RoboModerator
 {
@@ -419,6 +420,11 @@ namespace RoboModerator
                 await _orga.CustomsNewWeekAsync(command);
             }
 
+            if(command.CommandName == "customs-weekend")
+            {
+                await _orga.CustomsWeekendAsync(command);
+            }
+
             if (command.CommandName == "customs-refresh-signup")
             {
                 await _orga.RefreshSignupCommandAsync(command);
@@ -444,7 +450,7 @@ namespace RoboModerator
 
             // Run only once.
 
-            // await _orga.GenerateSlashCommandAsync(client);
+            await _orga.GenerateSlashCommandAsync(client);
             // await resGuild.GiveEveryoneARoleAsync("Chill Veterán");
 
             _bh = new ButtonHandler(_p);
