@@ -450,7 +450,7 @@ namespace RoboModerator
 
             // Run only once.
 
-            await _orga.GenerateSlashCommandAsync(client);
+            // await _orga.GenerateSlashCommandAsync(client);
             // await resGuild.GiveEveryoneARoleAsync("Chill Veterán");
 
             _bh = new ButtonHandler(_p);
