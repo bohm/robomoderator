@@ -18,18 +18,29 @@ using System.Text;
 using Discord.Net;
 using Newtonsoft.Json;
 using RoboModerator.Events;
+using RoboModerator.RoomManager;
+using RoboModerator.Commands;
 
 namespace RoboModerator
 {
+    /// <summary>
+    /// A portable data structure containing the necessary data for the extensions to work.
+    /// This way, the other classes do not need to interface with the huge Bot() class, but
+    /// they only receive BotProperties at their construction time.
+    /// </summary>
     class BotProperties
     {
-        public DiscordGuilds Guilds;
+        // The primary guild, used for backing up data as well as loading configuration data about other guilds.
+        public PrimaryDiscordGuild Primary = null;
+        // The other guilds (possibly in cluding the primary one) where tracking and interfacing with users take place.
+        public DiscordGuilds Guilds = null;
 
-        public BotProperties(DiscordGuilds g)
+        public BotProperties(DiscordGuilds g, PrimaryDiscordGuild p)
         {
-            Guilds = g;
+            Guilds = g; Primary = p;
         }
     }
+
     class Bot
     {
         public static Bot Instance;
@@ -40,12 +51,13 @@ namespace RoboModerator
         private CommandService commands;
         private IServiceProvider services;
         private Dictionary<string, ulong> groupNameToID;
-        private bool initComplete = false;
+        public bool InitComplete = false;
         // private DiscordGuilds _guilds;
         private ButtonHandler _bh;
-        private EventOrganizer _orga;
-        private BotProperties _p;
-      
+        public EventOrganizer Orga;
+        public BotProperties BotProps;
+        public Registration RoomReg = null;
+        private CommandManagement _mgmt = null;
 
         HashSet<ulong> _highlightedToday;
         DateTime _highlightSetDate;
@@ -66,6 +78,8 @@ namespace RoboModerator
             otherGameLobbyIds = new List<ulong>();
             otherGames = new List<string>();
             Access = new SemaphoreSlim(1, 1);
+            _mgmt = new CommandManagement();
+
 
         }
 
@@ -259,7 +273,7 @@ namespace RoboModerator
 
 
             Access.Release();
-            initComplete = true;
+            InitComplete = true;
         }
 
         private Task Log(LogMessage arg)
@@ -417,43 +431,67 @@ namespace RoboModerator
 
             if(command.CommandName == "customs-new-week")
             {
-                await _orga.CustomsNewWeekAsync(command);
+                await Orga.CustomsNewWeekAsync(command);
             }
 
             if(command.CommandName == "customs-weekend")
             {
-                await _orga.CustomsWeekendAsync(command);
-            }
-
-            if (command.CommandName == "customs-refresh-signup")
-            {
-                await _orga.RefreshSignupCommandAsync(command);
+                await Orga.CustomsWeekendAsync(command);
             }
         }
 
+        /// <summary>
+        /// The initalization of the bot once the Discord API is ready.
+        /// </summary>
+        /// <returns>No returns (only async Task).</returns>
         public async Task ClientReadyAsync()
         {
-            this._highlightSetDate = DateTime.Now;
-            this._highlightedToday = new HashSet<ulong>();
+            if (InitComplete)
+            {
+                Console.WriteLine("The program appears to run ClientReady method twice. This will cause issues. Terminating.");
+                throw new Exception();
+            }
+
+            PrimaryDiscordGuild primary = new PrimaryDiscordGuild(client);
+         
+            // TODO: Currently we hardcode the list of guilds instead of loading it from the primary Discord guild.
+            // This should change in the future, as we set up to work on more Discord guilds.
+
             this.ResidentGuild = client.GetGuild(Settings.residenceID);
             Console.WriteLine("Setting up residence in Discord guild " + this.ResidentGuild.Name);
+
+            DiscordGuilds g = new DiscordGuilds();
+            SingleGuildConfig sgc = new SingleGuildConfig();
+            sgc.loggingChannel = "rank-bot-logs";
+            DiscordGuild resGuild = new DiscordGuild(this.ResidentGuild, sgc);
+            g.Add(resGuild);
+
+            if (Settings.RegisterNewCommands)
+            {
+                await _mgmt.CreateGuildCommandsAsync(client, resGuild);
+            }
+
+            client.SlashCommandExecuted += _mgmt.SlashCommandHandlerAsync;
+
+            BotProps = new BotProperties(g, primary);
+
+            this._highlightSetDate = DateTime.Now;
+            this._highlightedToday = new HashSet<ulong>();
+
             FetchGroupIDs();
             // Do only once:
             // await BuildSlashCommandsAsync(this.ResidentGuild);
-            DiscordGuilds g = new DiscordGuilds();
-            DiscordGuild resGuild = new DiscordGuild(this.ResidentGuild);
-            g.Add(resGuild);
-            _p = new BotProperties(g);
-            _orga = new EventOrganizer(_p);
 
-            await _orga.RecoverDataAsync();
+            Orga = new EventOrganizer(BotProps);
+
+            await Orga.RecoverDataAsync();
 
             // Run only once.
 
             // await _orga.GenerateSlashCommandAsync(client);
             // await resGuild.GiveEveryoneARoleAsync("Chill Veterán");
 
-            _bh = new ButtonHandler(_p);
+            _bh = new ButtonHandler(BotProps);
 
             // await TestingAsync();
 
@@ -462,8 +500,13 @@ namespace RoboModerator
 
             // End button building.
             client.ButtonExecuted += _bh.ButtonHandlerAsync;
-            client.ButtonExecuted += _orga.EventButtonHandlerAsync;
+            client.ButtonExecuted += Orga.EventButtonHandlerAsync;
 
+            // Initialize room registration system.
+            RoomReg = new RoomManager.Registration(BotProps);
+            await RoomReg.LoadBackup();
+
+            InitComplete = true;
         }
 
         public async Task RunBotAsync()
@@ -531,7 +574,7 @@ namespace RoboModerator
                 throw new Exception();
             }
 
-            var secondDocOrson =  _p.Guilds.byId[ResidentGuild.Id].GetSingleUser(docOrson.Id);
+            var secondDocOrson =  BotProps.Guilds.byId[ResidentGuild.Id].GetSingleUser(docOrson.Id);
 
             if (secondDocOrson == null)
             {

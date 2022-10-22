@@ -53,8 +53,40 @@ namespace RoboModerator.Events
             };
         }
 
+        public void RemoveUsersWhoLeaveDiscord()
+        {
+            for (int day = 0; day < 7; day++)
+            {
+                if (_data.SignUpLists[day].Count > 0)
+                {
+                    _data.SignUpLists[day].RemoveAll(x => !_targetGuild.IsGuildMember(x));
+                }
+            }
+        }
+
+        public string TopTenPlaying(int day)
+        {
+            if (_data.SignUpLists[day].Count < 10)
+            {
+                return "";
+            }
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 10; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(" ");
+                }
+
+                sb.Append($"{_data.SignUpLists[day][i]}");
+            }
+            return sb.ToString();
+        }
         public string BuildMessage()
         {
+            RemoveUsersWhoLeaveDiscord();
+
             StringBuilder messageBuilder = new StringBuilder();
             messageBuilder.Append("Rozpis: \n");
             int dayOfTheWeek = ((int)DateTime.Today.DayOfWeek + 6) % 7;
@@ -207,6 +239,13 @@ namespace RoboModerator.Events
             var msg = await _targetChannel.GetMessageAsync(_data.MessageWithSignups);
             var oldMessage = msg as IUserMessage;
             await oldMessage.ModifyAsync(x => x.Content = newText);
+        }
+
+        public async Task LockAndUpdateMessage()
+        {
+            await _lock.WaitAsync();
+            await UpdateSignupMessageAsync();
+            _lock.Release();
         }
 
         public async Task RecoverDataAsync()
@@ -377,20 +416,7 @@ namespace RoboModerator.Events
             await command.RespondAsync("Created!", ephemeral: true);
         }
 
-        public async Task RefreshSignupCommandAsync(SocketSlashCommand command)
-        {
-            if (!Settings.Operators.Contains(command.User.Id))
-            {
-                await command.RespondAsync("Only the admins can run this.", ephemeral: true);
-                return;
-            }
 
-            await _lock.WaitAsync();
-            await UpdateSignupMessageAsync();
-            _lock.Release();
-
-            await command.RespondAsync($"Refreshed!", ephemeral: true);
-        }
 
         public async Task BuildButtonMessageAsync()
         {

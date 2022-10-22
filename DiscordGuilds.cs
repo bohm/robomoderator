@@ -7,6 +7,11 @@ using System.Threading.Tasks;
 
 namespace RoboModerator
 {
+    public class SingleGuildConfig
+    {
+          public string loggingChannel; // Channel for logging data.
+    }
+
     class DiscordGuilds
     {
         public List<DiscordGuild> guildList;
@@ -22,7 +27,7 @@ namespace RoboModerator
 
         public void Add(DiscordGuild g)
         {
-            if(byId.ContainsKey(g.Id) || byName.ContainsKey(g.GetName()))
+            if (byId.ContainsKey(g.Id) || byName.ContainsKey(g.GetName()))
             {
                 throw new Exception("Trying to add this guild twice!");
             }
@@ -35,9 +40,10 @@ namespace RoboModerator
 
 
 
-    class DiscordGuild
+    public class DiscordGuild
     {
-        private SocketGuild _socket;
+        public SocketGuild _socket; // mild TODO: Make private sometime (provide access via methods).
+        public SingleGuildConfig Config;
 
         public ulong Id;
         public string GetName()
@@ -46,10 +52,11 @@ namespace RoboModerator
         }
 
 
-        public DiscordGuild(SocketGuild socket)
+        public DiscordGuild(SocketGuild socket, SingleGuildConfig cfg)
         {
             Id = socket.Id;
             _socket = socket;
+            Config = cfg;
         }
 
         /// <summary>
@@ -93,7 +100,8 @@ namespace RoboModerator
             if (user.Nickname != null)
             {
                 return user.Nickname;
-            } else
+            }
+            else
             {
                 return user.Username;
             }
@@ -185,5 +193,14 @@ namespace RoboModerator
 
         }
 
+    }
+    class PrimaryDiscordGuild
+    {
+        public SocketGuild _socket; // soft TODO: make private
+        public PrimaryDiscordGuild(DiscordSocketClient sc)
+        {
+            _socket = sc.GetGuild(Settings.ControlGuild);
+            Console.WriteLine($"Connected to the primary Discord server {_socket.Name}.");
+        }
     }
 }

@@ -10,8 +10,16 @@ namespace RoboModerator
         // For the main use of this bot, this is the ID of Discord server R6 Siege a Chill, a CZ/SK Discord server.
         public static ulong residenceID = 620608384227606528;
 
-        // IDs of: DoctorOrson.
-        public static readonly ulong[] Operators = { 428263908281942038 };
+        // ID of the guild where the channel with all internal data can be found.
+        // If the bot is to be run on multiple Discord servers (guild), this should be a server where you have owner privileges.
+        public static readonly ulong ControlGuild = 903649099541270528;
+
+        // Operators are always allowed to use the bot, no matter the instance.
+        public static readonly ulong[] Operators = { 428263908281942038, 242905811175604225 };
+        // Administration roles.
+        // TODO: Make these roles settable Discord guild by Discord guild.
+        // public static readonly ulong[] OperatorRoles = { 810553010581274655 };
+
         public static string botStatus = "Zavolejte mne pomoci !domovoj.";
         public static string otherGameLobbyPrefix = "Jiná hra";
 
@@ -21,6 +29,15 @@ namespace RoboModerator
         public static readonly string searchChannelNG = "hledame-testing";
         public static readonly TimeSpan RepeatPeriod = TimeSpan.FromSeconds(60);
         public static readonly TimeSpan RateRestPeriod = TimeSpan.FromSeconds(1);
+
+        public static readonly bool RoomReservationFirstRun = true;
+        // Registers new roles within Discord. Only needed to be run when a new Discord guild is used or when new roles are added to the code.
+        public static readonly bool RegisterNewCommands = true;
+
+        public static readonly bool Logging = true;
+
+        public static readonly ulong RankedRoomCategory = 620611409390338049;
+        public static readonly ulong OtherGameRoomCategory = 880080368118685799;
 
         public static string get_botStatus()
         {

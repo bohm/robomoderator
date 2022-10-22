@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace RoboModerator
 {
 
-    public class Commands : ModuleBase<SocketCommandContext>
+    public class OlderCommands : ModuleBase<SocketCommandContext>
     {
         [Command("domovoj")]
         public async Task Info()
