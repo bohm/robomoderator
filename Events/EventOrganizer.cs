@@ -97,10 +97,15 @@ namespace RoboModerator.Events
                 {
                     var weeklyList = _data.SignUpLists[day];
                     StringBuilder weekBuilder = new StringBuilder();
+
+                    // This works, but we disable it for now.
+                    /*
                     if (dayOfTheWeek > day)
                     {
                         weekBuilder.Append("~~");
                     }
+                    */
+
                     weekBuilder.Append($"{_emoteDayNames[day]}");
                     // weekBuilder.Append($"{shortDayNames[day]}: ");
 
@@ -143,10 +148,13 @@ namespace RoboModerator.Events
                         userOrder++;
                     }
 
+                    // Also disabled.
+                    /*
                     if (dayOfTheWeek > day)
                     {
                         weekBuilder.Append("~~");
                     }
+                    */
 
                     messageBuilder.Append(weekBuilder.ToString());
                     messageBuilder.Append("\n");
@@ -366,11 +374,11 @@ namespace RoboModerator.Events
             }
 
             SlashCommandBuilder weekendOnly = new SlashCommandBuilder();
-            guildCommand.WithName("customs-weekend");
-            guildCommand.WithDescription("Create custom signups for the next weekend. Only the admin can do this.");
+            weekendOnly.WithName("customs-weekend");
+            weekendOnly.WithDescription("Create custom signups for the next weekend. Only the admin can run this.");
             try
             {
-                await client.Rest.CreateGuildCommand(guildCommand.Build(), _targetGuild.Id);
+                await client.Rest.CreateGuildCommand(weekendOnly.Build(), _targetGuild.Id);
             }
             catch (HttpException e)
             {
@@ -414,6 +422,18 @@ namespace RoboModerator.Events
 
             await SendNewMessagesAsync(new List<bool>{ false, false, false, false, true, true, true});
             await command.RespondAsync("Created!", ephemeral: true);
+        }
+
+        // TODO: Transform these into something generic.
+        public async Task CustomFridayAsync(SocketSlashCommand command)
+        {
+            if (!Settings.Operators.Contains(command.User.Id))
+            {
+                await command.RespondAsync("Only the admins can run this.", ephemeral: true);
+                return;
+            }
+
+            await SendNewMessagesAsync(new List<bool> { false, false, false, false, true, false, false });
         }
 
 
