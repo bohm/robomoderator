@@ -55,6 +55,7 @@ namespace RoboModerator
         // private DiscordGuilds _guilds;
         private ButtonHandler _bh;
         public EventOrganizer Orga;
+        public TourneyOrganizer Tourney;
         public BotProperties BotProps;
         public Registration RoomReg = null;
         private CommandManagement _mgmt = null;
@@ -478,13 +479,14 @@ namespace RoboModerator
             this._highlightSetDate = DateTime.Now;
             this._highlightedToday = new HashSet<ulong>();
 
-            FetchGroupIDs();
+            // FetchGroupIDs();
             // Do only once:
             // await BuildSlashCommandsAsync(this.ResidentGuild);
 
             Orga = new EventOrganizer(BotProps);
-
             await Orga.RecoverDataAsync();
+            Tourney = new TourneyOrganizer(BotProps);
+            await Tourney.DelayedInitAsync();
 
             // Run only once.
 
@@ -501,12 +503,16 @@ namespace RoboModerator
             // End button building.
             client.ButtonExecuted += _bh.ButtonHandlerAsync;
             client.ButtonExecuted += Orga.EventButtonHandlerAsync;
+            client.ButtonExecuted += Tourney.EventButtonHandlerAsync;
 
             // Initialize room registration system.
             RoomReg = new RoomManager.Registration(BotProps);
             await RoomReg.LoadBackup();
 
             InitComplete = true;
+
+            // Debug.
+
         }
 
         public async Task RunBotAsync()

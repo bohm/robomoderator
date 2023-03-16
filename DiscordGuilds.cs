@@ -94,7 +94,11 @@ namespace RoboModerator
             SocketGuildUser user = GetSingleUser(discordId);
             if (user == null)
             {
+                Console.WriteLine($"GetNicknameOrName({discordId}): GetSingleUser() failed.");
                 return null;
+            } else
+            {
+                Console.WriteLine($"GetNicknameOrName({discordId}): User's nickname is {user.Nickname} and username is {user.Username}.");
             }
 
             if (user.Nickname != null)
