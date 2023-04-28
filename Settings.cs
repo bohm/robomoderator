@@ -38,6 +38,7 @@ namespace RoboModerator
 
         public static readonly ulong RankedRoomCategory = 620611409390338049;
         public static readonly ulong OtherGameRoomCategory = 880080368118685799;
+        public static readonly TimeSpan MessageRecentTime = TimeSpan.FromMinutes(10);
 
         public static string get_botStatus()
         {

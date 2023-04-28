@@ -28,7 +28,7 @@ namespace RoboModerator
     /// This way, the other classes do not need to interface with the huge Bot() class, but
     /// they only receive BotProperties at their construction time.
     /// </summary>
-    class BotProperties
+    public class BotProperties
     {
         // The primary guild, used for backing up data as well as loading configuration data about other guilds.
         public PrimaryDiscordGuild Primary = null;
@@ -58,6 +58,7 @@ namespace RoboModerator
         public TourneyOrganizer Tourney;
         public BotProperties BotProps;
         public Registration RoomReg = null;
+        public MessageManager MsgMgr = null;
         private CommandManagement _mgmt = null;
 
         HashSet<ulong> _highlightedToday;
@@ -510,6 +511,9 @@ namespace RoboModerator
             await RoomReg.LoadBackup();
 
             InitComplete = true;
+
+            // Initialize message manager system.
+            MsgMgr = new MessageManager(BotProps, client);
 
             // Debug.
 

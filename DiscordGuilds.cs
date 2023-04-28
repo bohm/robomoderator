@@ -12,7 +12,7 @@ namespace RoboModerator
           public string loggingChannel; // Channel for logging data.
     }
 
-    class DiscordGuilds
+    public class DiscordGuilds
     {
         public List<DiscordGuild> guildList;
         public Dictionary<string, DiscordGuild> byName;
@@ -198,7 +198,7 @@ namespace RoboModerator
         }
 
     }
-    class PrimaryDiscordGuild
+    public class PrimaryDiscordGuild
     {
         public SocketGuild _socket; // soft TODO: make private
         public PrimaryDiscordGuild(DiscordSocketClient sc)
